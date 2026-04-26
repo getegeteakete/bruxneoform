@@ -8,7 +8,6 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [tab, setTab] = useState<Tab>('stats');
-  const [loading, setLoading] = useState(false);
 
   const login = async () => {
     const res = await fetch('/api/admin/auth', {
@@ -404,7 +403,6 @@ function SurveyPanel() {
 // ============================================================
 function SettingsPanel() {
   const [dbStatus, setDbStatus] = useState<any>(null);
-  const [initResult, setInitResult] = useState<any>(null);
   const [checking, setChecking] = useState(false);
 
   const checkDb = async () => {
