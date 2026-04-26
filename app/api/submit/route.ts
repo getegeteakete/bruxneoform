@@ -66,8 +66,17 @@ export async function POST(req: NextRequest) {
         const adminEmail = process.env.ADMIN_NOTIFY_EMAIL || 'info@brux.jp';
         const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
 
+        const formTypeLabel = form_id === 'request' ? '資料請求' : form_id === 'contact' ? 'お問い合わせ' : (answers.inquiry_type || 'お問い合わせ');
+
+        const fieldLabels: Record<string, string> = {
+          company_name: '会社名', company_kana: '会社名（カナ）', department: '部署名',
+          contact_name: '担当者様名', contact_kana: '担当者様名（カナ）',
+          email: 'メールアドレス', phone: '電話番号',
+          catalog: '希望カタログ', message: 'お問い合わせ内容', inquiry_type: 'お問い合わせ種別',
+        };
+
         const answersHtml = Object.entries(answers)
-          .map(([key, val]) => `<tr><td style="padding:8px;border-bottom:1px solid #eee;color:#666;width:140px;font-size:13px;">${key}</td><td style="padding:8px;border-bottom:1px solid #eee;font-size:13px;">${Array.isArray(val) ? val.join('、') : val}</td></tr>`)
+          .map(([key, val]) => `<tr><td style="padding:8px;border-bottom:1px solid #eee;color:#666;width:160px;font-size:13px;">${fieldLabels[key] || key}</td><td style="padding:8px;border-bottom:1px solid #eee;font-size:13px;">${Array.isArray(val) ? val.join('、') : val}</td></tr>`)
           .join('');
 
         await fetch('https://api.resend.com/emails', {
@@ -76,11 +85,11 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             from: fromEmail,
             to: [adminEmail],
-            subject: `【BRUX NeoForm】新規${answers.inquiry_type || 'お問い合わせ'}：${answers.company_name || '名称未記入'}`,
+            subject: `【ブルックスジャパン】新規${formTypeLabel}：${answers.company_name || '名称未記入'}`,
             html: `
               <div style="font-family:'Hiragino Sans','Noto Sans JP',sans-serif;max-width:600px;margin:0 auto;">
                 <div style="background:#0a1628;color:white;padding:20px 24px;">
-                  <h2 style="margin:0;font-size:16px;">新規お問い合わせ通知</h2>
+                  <h2 style="margin:0;font-size:16px;">新規${formTypeLabel}通知</h2>
                 </div>
                 <div style="padding:24px;">
                   <table style="width:100%;border-collapse:collapse;">${answersHtml}</table>

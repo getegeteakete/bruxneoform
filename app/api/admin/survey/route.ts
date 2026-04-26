@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
-const SURVEY_FIELDS = ['how_found', 'interest_products', 'satisfaction', 'inquiry_type', 'catalog'];
+const SURVEY_FIELDS = ['catalog', 'inquiry_type'];
 
 export async function GET(req: NextRequest) {
   try {
