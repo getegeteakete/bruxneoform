@@ -206,18 +206,72 @@ export default function FormPage() {
 
   // === 送信完了 ===
   if (submitted) {
+    const requestedCatalogs: string[] = formData.catalog || [];
+    const hasCatalogs = requestedCatalogs.length > 0 && (formId === 'request' || formId === 'demo');
+
+    const trackDownload = async (catalogName: string) => {
+      await fetch('/api/download-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          form_id: formId,
+          file_id: catalogName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().slice(0, 50),
+          filename: catalogName,
+          email: formData.email,
+          company_name: formData.company_name,
+        }),
+      }).catch(() => {});
+    };
+
     return (
-      <div className={`min-h-screen flex items-center justify-center ${isEmbed ? 'bg-transparent p-4' : 'bg-brux-bg p-6'}`}>
-        <div className="bg-white rounded-2xl p-12 max-w-lg w-full text-center border border-brux-line shadow-sm animate-fade-in">
-          <div className="w-16 h-16 bg-brux-success/10 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-8 h-8 text-brux-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
+      <div className={`min-h-screen ${isEmbed ? 'bg-transparent p-4' : 'bg-brux-bg p-6'}`}>
+        <div className="max-w-lg mx-auto pt-12">
+          <div className="bg-white rounded-2xl p-10 text-center border border-brux-line shadow-sm animate-fade-in">
+            <div className="w-16 h-16 bg-brux-success/10 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-brux-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold mb-3">送信完了</h2>
+            <p className="text-sm text-brux-gray leading-relaxed">{form.thank_you_message}</p>
           </div>
-          <h2 className="text-xl font-bold mb-3">送信完了</h2>
-          <p className="text-sm text-brux-gray leading-relaxed">{form.thank_you_message}</p>
+
+          {/* カタログダウンロードセクション */}
+          {hasCatalogs && (
+            <div className="bg-white rounded-2xl p-8 border border-brux-line shadow-sm mt-6 animate-fade-in" style={{ animationDelay: '0.2s' }}>
+              <div className="flex items-center gap-2 mb-4">
+                <svg className="w-5 h-5 text-brux-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h3 className="text-base font-bold">ご希望カタログのダウンロード</h3>
+              </div>
+              <p className="text-xs text-brux-gray mb-4">以下のカタログをダウンロードいただけます。正式なカタログは担当者より別途お送りいたします。</p>
+              <div className="space-y-2">
+                {requestedCatalogs.map((cat: string, i: number) => (
+                  <button key={i}
+                    onClick={() => {
+                      trackDownload(cat);
+                      // 実際のPDFがある場合はここでダウンロード処理
+                      alert(`「${cat}」のダウンロードを記録しました。\n\n※実際のPDFファイルは管理画面でURLを設定後、自動ダウンロードされます。`);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg border border-brux-line hover:border-brux-accent/40 hover:bg-brux-accent/5 transition-all text-left group">
+                    <div className="w-8 h-8 bg-brux-accent/10 rounded flex items-center justify-center shrink-0 group-hover:bg-brux-accent/20 transition-colors">
+                      <svg className="w-4 h-4 text-brux-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                    </div>
+                    <span className="text-sm flex-1">{cat}</span>
+                    <span className="text-[10px] text-brux-accent font-medium">PDF</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {!isEmbed && (
-            <a href="https://www.brux.jp" className="inline-block mt-8 btn-secondary">ブルックスジャパン トップへ戻る</a>
+            <div className="text-center mt-8">
+              <a href="https://www.brux.jp" className="btn-secondary">ブルックスジャパン トップへ戻る</a>
+            </div>
           )}
         </div>
       </div>

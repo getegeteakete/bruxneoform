@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 
-type Tab = 'stats' | 'submissions' | 'survey' | 'settings';
+type Tab = 'stats' | 'submissions' | 'survey' | 'downloads' | 'settings';
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
@@ -73,11 +73,12 @@ export default function AdminPage() {
 
       {/* タブ */}
       <div className="bg-white border-b border-brux-line">
-        <div className="max-w-6xl mx-auto px-6 flex gap-1">
+        <div className="max-w-6xl mx-auto px-6 flex gap-1 overflow-x-auto">
           {([
             { id: 'stats', label: '📊 統計' },
             { id: 'submissions', label: '📋 送信一覧' },
             { id: 'survey', label: '📝 アンケート集計' },
+            { id: 'downloads', label: '📥 DL統計' },
             { id: 'settings', label: '⚙️ 設定' },
           ] as const).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -93,6 +94,7 @@ export default function AdminPage() {
         {tab === 'stats' && <StatsPanel />}
         {tab === 'submissions' && <SubmissionsPanel />}
         {tab === 'survey' && <SurveyPanel />}
+        {tab === 'downloads' && <DownloadsPanel />}
         {tab === 'settings' && <SettingsPanel />}
       </main>
     </div>
@@ -104,11 +106,14 @@ export default function AdminPage() {
 // ============================================================
 function StatsPanel() {
   const [stats, setStats] = useState<any>(null);
+  const [dlStats, setDlStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/admin/stats?form_id=demo')
-      .then(r => r.json()).then(setStats).finally(() => setLoading(false));
+    Promise.all([
+      fetch('/api/admin/stats?form_id=request').then(r => r.json()),
+      fetch('/api/download-log?form_id=request').then(r => r.json()),
+    ]).then(([s, d]) => { setStats(s); setDlStats(d); }).finally(() => setLoading(false));
   }, []);
 
   if (loading) return <LoadingSpinner />;
@@ -118,6 +123,7 @@ function StatsPanel() {
     { label: '総送信数', value: stats.totalSubmissions, color: 'bg-brux-accent' },
     { label: '今日の送信', value: stats.todaySubmissions, color: 'bg-brux-success' },
     { label: 'メール送信成功', value: stats.emailsSent, color: 'bg-blue-500' },
+    { label: '資料DL数', value: dlStats?.totalDownloads || 0, color: 'bg-amber-500' },
     { label: 'スパムブロック', value: stats.spamBlocked, color: 'bg-brux-error' },
   ];
 
@@ -127,7 +133,7 @@ function StatsPanel() {
   return (
     <div className="space-y-8">
       {/* カード */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {cards.map((c, i) => (
           <div key={i} className="bg-white rounded-xl border border-brux-line p-6">
             <p className="text-xs text-brux-gray mb-1">{c.label}</p>
@@ -480,6 +486,106 @@ function SettingsPanel() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ============================================================
+// ダウンロード統計パネル
+// ============================================================
+function DownloadsPanel() {
+  const [dlData, setDlData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/download-log?form_id=request')
+      .then(r => r.json()).then(setDlData).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  if (!dlData || dlData.totalDownloads === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-brux-line p-12 text-center">
+        <p className="text-brux-gray text-sm">ダウンロードデータがまだありません</p>
+        <p className="text-xs text-brux-gray mt-2">資料請求フォームからカタログがダウンロードされると、ここに統計が表示されます。</p>
+      </div>
+    );
+  }
+
+  const dailyEntries = Object.entries(dlData.dailyCounts || {});
+  const maxDaily = Math.max(...dailyEntries.map(([, v]) => v as number), 1);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold">ダウンロード統計</h2>
+        <span className="text-xs text-brux-gray">総DL数: {dlData.totalDownloads}件</span>
+      </div>
+
+      {/* カタログ別ダウンロード数 */}
+      <div className="bg-white rounded-xl border border-brux-line p-6">
+        <h3 className="text-sm font-bold mb-4">カタログ別ダウンロード数</h3>
+        <div className="space-y-3">
+          {(dlData.catalogList || []).map((cat: any) => {
+            const pct = dlData.totalDownloads > 0 ? Math.round((cat.downloads / dlData.totalDownloads) * 100) : 0;
+            return (
+              <div key={cat.id} className="flex items-center gap-3">
+                <span className="text-xs text-brux-gray w-56 shrink-0 truncate" title={cat.description}>{cat.description}</span>
+                <div className="flex-1 h-5 bg-brux-light rounded-full overflow-hidden">
+                  <div className="h-full bg-brux-accent rounded-full transition-all duration-500 flex items-center px-2"
+                    style={{ width: `${Math.max(pct, 3)}%` }}>
+                    {pct >= 15 && <span className="text-[9px] text-white font-bold">{pct}%</span>}
+                  </div>
+                </div>
+                <span className="text-xs text-brux-gray w-16 text-right">{cat.downloads}件</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 日別DLグラフ */}
+      <div className="bg-white rounded-xl border border-brux-line p-6">
+        <h3 className="text-sm font-bold mb-6">直近7日間のダウンロード数</h3>
+        <div className="flex items-end gap-3 h-32">
+          {dailyEntries.map(([date, count]) => (
+            <div key={date} className="flex-1 flex flex-col items-center gap-2">
+              <span className="text-xs font-bold text-brux-accent">{count as number}</span>
+              <div className="w-full rounded-t relative" style={{ height: `${Math.max(((count as number) / maxDaily) * 100, 4)}%` }}>
+                <div className="absolute inset-0 bg-brux-success rounded-t" />
+              </div>
+              <span className="text-[10px] text-brux-gray">{date.slice(5)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 直近ダウンロード一覧 */}
+      {dlData.recentLogs && dlData.recentLogs.length > 0 && (
+        <div className="bg-white rounded-xl border border-brux-line overflow-hidden">
+          <div className="px-6 py-4 border-b border-brux-line/50">
+            <h3 className="text-sm font-bold">直近のダウンロード</h3>
+          </div>
+          <div className="divide-y divide-brux-line/50">
+            {dlData.recentLogs.map((log: any, i: number) => (
+              <div key={i} className="px-6 py-3 flex items-center gap-4">
+                <div className="w-8 h-8 bg-brux-success/10 rounded flex items-center justify-center shrink-0">
+                  <svg className="w-4 h-4 text-brux-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm truncate">{log.filename}</p>
+                </div>
+                <span className="text-[10px] text-brux-gray whitespace-nowrap">
+                  {new Date(log.downloaded_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
