@@ -3,14 +3,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
 // スパムキーワードリスト
-const SPAM_KEYWORDS = ['casino', 'viagra', 'lottery', 'crypto', 'bitcoin', 'click here', 'free money'];
+const SPAM_KEYWORDS = ['casino', 'viagra', 'lottery', 'crypto', 'bitcoin', 'click here', 'free money',
+  'buy now', 'limited time', 'act now', 'winner', 'congratulations', 'porn', 'xxx', 'dating',
+  'weight loss', 'make money', 'earn extra', 'work from home', 'no obligation'];
+
+// 使い捨てメールドメインブラックリスト
+const DISPOSABLE_DOMAINS = ['mailinator.com', 'guerrillamail.com', 'tempmail.com', 'throwaway.email',
+  'yopmail.com', 'sharklasers.com', 'guerrillamailblock.com', 'grr.la', 'dispostable.com',
+  'trashmail.com', '10minutemail.com', 'temp-mail.org', 'fakeinbox.com', 'maildrop.cc'];
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { form_id, answers, honeypot, elapsed_ms } = body;
+    const { form_id, answers, honeypot, elapsed_ms, js_token } = body;
 
-    // === スパム対策 4層 ===
+    // === スパム対策 7層 ===
 
     // 1. ハニーポット
     if (honeypot) {
@@ -18,20 +25,41 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true }); // スパムにはOKを返す
     }
 
-    // 2. 送信速度チェック（3秒以内は怪しい）
-    if (elapsed_ms && elapsed_ms < 3000) {
+    // 2. JSトークン検証（BOTはJSを実行しないため空になる）
+    if (!js_token || typeof js_token !== 'string' || js_token.length < 10) {
+      await logSpam(form_id, 'no_js_token', req);
+      return NextResponse.json({ success: true });
+    }
+
+    // 3. 送信速度チェック（5秒以内は怪しい）
+    if (elapsed_ms && elapsed_ms < 5000) {
       await logSpam(form_id, 'too_fast', req);
       return NextResponse.json({ success: true });
     }
 
-    // 3. キーワードフィルター
-    const allText = Object.values(answers).join(' ').toLowerCase();
+    // 4. キーワードフィルター
+    const allText = Object.values(answers).flat().join(' ').toLowerCase();
     if (SPAM_KEYWORDS.some(kw => allText.includes(kw))) {
       await logSpam(form_id, 'keyword', req);
       return NextResponse.json({ success: true });
     }
 
-    // 4. レート制限（同一IPから1分間に3回以上）
+    // 5. 使い捨てメールドメインチェック
+    if (answers.email) {
+      const emailDomain = answers.email.split('@')[1]?.toLowerCase();
+      if (emailDomain && DISPOSABLE_DOMAINS.includes(emailDomain)) {
+        await logSpam(form_id, 'disposable_email', req);
+        return NextResponse.json({ success: true });
+      }
+    }
+
+    // 6. 必須フィールド存在チェック（BOTは適当に送る）
+    if (!answers.company_name || !answers.email || !answers.contact_name) {
+      await logSpam(form_id, 'missing_required', req);
+      return NextResponse.json({ error: '必須項目が未入力です' }, { status: 400 });
+    }
+
+    // 7. レート制限（同一IPから1分間に3回以上）
     const clientIp = req.headers.get('x-forwarded-for') || 'unknown';
     const rateLimitOk = await checkRateLimit(form_id, clientIp);
     if (!rateLimitOk) {
@@ -79,7 +107,7 @@ export async function POST(req: NextRequest) {
           .map(([key, val]) => `<tr><td style="padding:8px;border-bottom:1px solid #eee;color:#666;width:160px;font-size:13px;">${fieldLabels[key] || key}</td><td style="padding:8px;border-bottom:1px solid #eee;font-size:13px;">${Array.isArray(val) ? val.join('、') : val}</td></tr>`)
           .join('');
 
-        await fetch('https://api.resend.com/emails', {
+        const adminRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -99,10 +127,12 @@ export async function POST(req: NextRequest) {
             `,
           }),
         });
+        const adminResData = await adminRes.json();
+        console.log('Admin email result:', JSON.stringify(adminResData));
 
         // 自動返信メール（メールアドレスがある場合）
         if (answers.email) {
-          await fetch('https://api.resend.com/emails', {
+          const replyRes = await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -129,6 +159,8 @@ export async function POST(req: NextRequest) {
               `,
             }),
           });
+          const replyResData = await replyRes.json();
+          console.log('Auto-reply email result:', JSON.stringify(replyResData));
         }
 
         // メール送信成功をDB更新

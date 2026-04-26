@@ -123,6 +123,16 @@ export default function FormPage() {
   const [honeypot, setHoneypot] = useState('');
   const [startTime] = useState(Date.now());
   const [agreed, setAgreed] = useState(false);
+  // スパムガード: 計算CAPTCHA
+  const [captchaA] = useState(() => Math.floor(Math.random() * 9) + 1);
+  const [captchaB] = useState(() => Math.floor(Math.random() * 9) + 1);
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+  // スパムガード: JSトークン（BOTはJSを実行しない）
+  const [jsToken, setJsToken] = useState('');
+
+  useEffect(() => {
+    setJsToken(btoa(`brux-${Date.now()}-${navigator.userAgent.length}`));
+  }, []);
 
   const form = FORMS[formId] || FORM_DEMO;
   const steps = form.steps;
@@ -188,6 +198,10 @@ export default function FormPage() {
     if (honeypot) return;
     if (Date.now() - startTime < 3000) return;
     if (!agreed) { alert('プライバシーポリシーに同意してください'); return; }
+    // CAPTCHAチェック
+    if (parseInt(captchaAnswer) !== captchaA + captchaB) {
+      alert('計算の答えが正しくありません'); return;
+    }
 
     setSubmitting(true);
     try {
@@ -196,7 +210,13 @@ export default function FormPage() {
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ form_id: formId, answers: submitData, honeypot, elapsed_ms: Date.now() - startTime }),
+        body: JSON.stringify({
+          form_id: formId,
+          answers: submitData,
+          honeypot,
+          elapsed_ms: Date.now() - startTime,
+          js_token: jsToken,
+        }),
       });
       if (res.ok) setSubmitted(true);
       else { const data = await res.json(); alert(data.error || '送信に失敗しました。'); }
@@ -331,8 +351,12 @@ export default function FormPage() {
 
         {/* フォーム本体 */}
         <div className="bg-white rounded-2xl border border-brux-line shadow-sm p-8 md:p-10">
+          {/* ハニーポット（複数配置でBOT検出率向上） */}
           <input type="text" name="website_url" value={honeypot} onChange={e => setHoneypot(e.target.value)}
             style={{ position: 'absolute', left: '-9999px', opacity: 0, height: 0 }} tabIndex={-1} autoComplete="off" />
+          <input type="text" name="company_website" tabIndex={-1} autoComplete="off"
+            style={{ position: 'absolute', left: '-9999px', opacity: 0, height: 0 }}
+            onChange={e => setHoneypot(e.target.value)} />
 
           {isConfirmStep ? (
             <div className="animate-fade-in">
@@ -353,6 +377,22 @@ export default function FormPage() {
                   ))}
               </div>
               <div className="mt-8 p-4 bg-brux-bg rounded-lg">
+                <label className="block text-sm font-medium mb-2">
+                  スパム防止のため、以下の計算にお答えください
+                  <span className="required-badge">必須</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-bold text-brux-navy">{captchaA} + {captchaB} =</span>
+                  <input type="number" value={captchaAnswer} onChange={e => setCaptchaAnswer(e.target.value)}
+                    className="form-input w-20 text-center text-lg" placeholder="?" />
+                  {captchaAnswer && parseInt(captchaAnswer) === captchaA + captchaB && (
+                    <span className="text-brux-success text-sm">✓ 正解</span>
+                  )}
+                </div>
+              </div>
+
+              {/* プライバシーポリシー同意 */}
+              <div className="mt-4 p-4 bg-brux-bg rounded-lg">
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)}
                     className="mt-1 w-4 h-4 rounded border-brux-line accent-brux-accent" />
@@ -378,7 +418,7 @@ export default function FormPage() {
           <div className="flex justify-between mt-10 pt-6 border-t border-brux-line/50">
             {currentStep > 0 ? <button onClick={goBack} className="btn-secondary">← 戻る</button> : <div />}
             {isConfirmStep ? (
-              <button onClick={handleSubmit} disabled={submitting || !agreed} className="btn-primary">
+              <button onClick={handleSubmit} disabled={submitting || !agreed || parseInt(captchaAnswer) !== captchaA + captchaB} className="btn-primary">
                 {submitting ? (
                   <span className="flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />送信中...
